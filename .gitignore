@@ -131,3 +131,13 @@ data/
 
 # Generated App Store Connect "What's New" notes (see tools/prepare-appstore-release-notes.js)
 /fastlane/appstore_metadata
+
+
+# Enhanced Local Bridge & SuperSync Private Data
+local-bridge/config.json
+local-bridge/bridge.log
+local-bridge/backups/
+tests/test_backups_tmp/
+tests/test_server_backups/
+supersync-deploy/.env
+supersync-deploy/backups/

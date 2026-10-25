@@ -108,7 +108,42 @@ export class LocalBackupService {
     if (IS_ELECTRON) {
       return window.ea.checkBackupAvailable();
     }
-    return Promise.resolve(false);
+    return this._checkBackupAvailableBridge();
+  }
+
+  private async _checkBackupAvailableBridge(): Promise<boolean | LocalBackupMeta> {
+    try {
+      const bridgeUrl = localStorage.getItem('SP_LOCAL_BRIDGE_URL') || 'http://127.0.0.1:4567';
+      const token = localStorage.getItem('SP_LOCAL_BRIDGE_TOKEN') || '';
+      const res = await fetch(`${bridgeUrl}/api/health`, {
+        headers: { 'X-Bridge-Token': token },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.total_backups > 0 && data.last_backup_time) {
+          return {
+            folder: bridgeUrl,
+            path: 'latest',
+            name: 'SuperProductivity_Local_Backup',
+            created: new Date(data.last_backup_time).getTime(),
+          };
+        }
+      }
+    } catch {}
+    return false;
+  }
+
+  async loadBackupBridge(path: string = 'latest'): Promise<string> {
+    const bridgeUrl = localStorage.getItem('SP_LOCAL_BRIDGE_URL') || 'http://127.0.0.1:4567';
+    const token = localStorage.getItem('SP_LOCAL_BRIDGE_TOKEN') || '';
+    const res = await fetch(`${bridgeUrl}/api/backup/latest`, {
+      headers: { 'X-Bridge-Token': token },
+    });
+    if (res.ok) {
+      const json = await res.json();
+      return JSON.stringify(json.data);
+    }
+    throw new Error('Failed to load backup from Local Bridge');
   }
 
   loadBackupElectron(backupPath: string): Promise<string> {
@@ -197,6 +232,25 @@ export class LocalBackupService {
    */
   async askForFileStoreBackupIfAvailable(): Promise<void> {
     if (!IS_ELECTRON && !this._isAndroidWebView && !this._platformService.isIOS()) {
+      const backupMeta = await this.checkBackupAvailable();
+      if (typeof backupMeta !== 'boolean') {
+        if (
+          confirmDialog(
+            this._translateService.instant(T.CONFIRM.RESTORE_FILE_BACKUP, {
+              dir: backupMeta.folder,
+              from: new Date(backupMeta.created).toLocaleString(),
+            }),
+          )
+        ) {
+          try {
+            const backupData = await this.loadBackupBridge(backupMeta.path);
+            Log.log('backupData loaded from Local Bridge');
+            await this._importBackup(backupData);
+          } catch (e) {
+            Log.err('Failed to load backup from Local Bridge', e);
+          }
+        }
+      }
       return;
     }
 
@@ -348,6 +402,11 @@ export class LocalBackupService {
     if (this._platformService.isIOS() && (await this._backupIOS(data))) {
       didWrite = true;
     }
+    if (!IS_ELECTRON && !this._isAndroidWebView && !this._platformService.isIOS()) {
+      if (await this._backupBridge(data)) {
+        didWrite = true;
+      }
+    }
 
     // #7901: record when a good backup was actually written so Settings can show
     // the user they're protected. Only on a real write: the per-platform A3
@@ -383,6 +442,24 @@ export class LocalBackupService {
       data,
       maxBackupFiles: cfg.maxBackupFiles ?? DEFAULT_MAX_BACKUP_FILES,
     });
+  }
+
+  private async _backupBridge(data: AppDataComplete): Promise<boolean> {
+    try {
+      const bridgeUrl = localStorage.getItem('SP_LOCAL_BRIDGE_URL') || 'http://127.0.0.1:4567';
+      const token = localStorage.getItem('SP_LOCAL_BRIDGE_TOKEN') || '';
+      const res = await fetch(`${bridgeUrl}/api/backup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Bridge-Token': token,
+        },
+        body: JSON.stringify(data),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
   }
 
   // A3 (#7925) pure predicate — kept on its own so the threshold logic is

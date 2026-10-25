@@ -1,0 +1,48 @@
+services:
+  supersync-postgres:
+    image: postgres:16-alpine
+    container_name: supersync-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-supersync}
+      POSTGRES_USER: ${POSTGRES_USER:-supersync}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - supersync_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-supersync} -d ${POSTGRES_DB:-supersync}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - supersync_net
+
+  supersync:
+    image: ghcr.io/super-productivity/supersync:latest
+    container_name: supersync-app
+    restart: unless-stopped
+    depends_on:
+      supersync-postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${PORT:-3000}:3000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-supersync}:${POSTGRES_PASSWORD}@supersync-postgres:5432/${POSTGRES_DB:-supersync}?schema=public
+      RUN_MIGRATIONS_ON_STARTUP: "true"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - supersync_net
+
+volumes:
+  supersync_postgres_data:
+    driver: local
+
+networks:
+  supersync_net:
+    driver: bridge

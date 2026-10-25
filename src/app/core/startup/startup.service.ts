@@ -37,6 +37,7 @@ import { LocalRestApiHandlerService } from '../electron/local-rest-api-handler.s
 import { CustomThemeService } from '../theme/custom-theme.service';
 import { UpdateCheckService } from '../update-check/update-check.service';
 import { JiraElectronBridgeService } from '../../features/issue/providers/jira/jira-electron-bridge.service';
+import { LocalBridgeService } from '../local-bridge/local-bridge.service';
 
 const w = window as Window & { productivityTips?: string[][]; randomIndex?: number };
 
@@ -77,6 +78,7 @@ export class StartupService {
   private _injector = inject(Injector);
   private _customThemeService = inject(CustomThemeService);
   private _jiraElectronBridge = inject(JiraElectronBridgeService);
+  private _localBridgeService = inject(LocalBridgeService);
 
   constructor() {
     // Claim the privileged Jira IPC capability here, in trusted startup code,
@@ -213,6 +215,7 @@ export class StartupService {
       // Chrome extension only works in web browser, not native mobile apps
       if (!this._platformService.isNative) {
         this._chromeExtensionInterfaceService.init();
+        this._localBridgeService.init();
       }
     }
   }
