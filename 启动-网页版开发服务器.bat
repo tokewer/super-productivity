@@ -1,24 +1,29 @@
-@echo off
-setlocal
-title Super Productivity ç½‘é¡µç‰ˆå¼€å‘æœåŠ¡å™¨
-
-cd /d "%~dp0"
-
-where node >nul 2>nul
-if errorlevel 1 (
-    echo [ERROR] æœªæ‰¾åˆ° Node.jsã€‚
-    pause
-    exit /b 1
-)
-
-echo ========================================================
-echo  Super Productivity ç½‘é¡µå¼€å‘æœåŠ¡å™¨æ­£åœ¨å¯åŠ¨...
-echo  - è®¿é—®åœ°å€: http://localhost:4200
-echo ========================================================
-echo.
-call npm run serve
-if errorlevel 1 (
-    echo.
-    echo [ERROR] å¼€å‘æœåŠ¡å™¨å¯åŠ¨å¤±è´¥ã€‚
-    pause
-)
+@echo off
+setlocal
+title Super Productivity ÍøÒ³°æ¿ª·¢·þÎñÆ÷
+
+pushd "%~dp0"
+
+where node >nul 2>nul
+if errorlevel 1 (
+    echo [ERROR] ÏµÍ³Î´ÕÒµ½ Node.js¡£
+    echo Çë°²×° Node.js ²¢È·±£ÒÑ¼ÓÈë PATH¡£
+    pause
+    popd
+    exit /b 1
+)
+
+echo ========================================================
+echo  Super Productivity ÍøÒ³¿ª·¢·þÎñÆ÷ÕýÔÚÆô¶¯...
+echo  - ·ÃÎÊµØÖ·: http://localhost:4200
+echo ========================================================
+echo.
+
+call npm run serve
+if errorlevel 1 (
+    echo.
+    echo [ERROR] ¿ª·¢·þÎñÆ÷Æô¶¯Ê§°Ü¡£
+    pause
+)
+
+popd

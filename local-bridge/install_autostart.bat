@@ -1,23 +1,26 @@
-@echo off
-setlocal
-echo =======================================================
-echo  Super Productivity æœ¬åœ°æ¡¥æ¥ - é…ç½®å¼€æœºè‡ªå¯åŠ¨
-echo =======================================================
-echo.
-
-set "SCRIPT_DIR=%~dp0"
-set "TARGET=%SCRIPT_DIR%start_service_hidden.vbs"
-set "SHORTCUT=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\SuperProductivityBridge.lnk"
-
-powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%SHORTCUT%'); $s.TargetPath = '%TARGET%'; $s.WorkingDirectory = '%SCRIPT_DIR%'; $s.Save()"
-
-if exist "%SHORTCUT%" (
-    echo [OK] å·²æˆåŠŸåœ¨ Windows å¼€æœºè‡ªå¯æ–‡ä»¶å¤¹åˆ›å»ºå¿«æ·æ–¹å¼:
-    echo      %SHORTCUT%
-    echo ç”µè„‘é‡å¯åå°†è‡ªåŠ¨åœ¨åå°å¯åŠ¨æ¡¥æ¥åŠ©æ‰‹ä¸è¿·ä½ çª—å£ã€‚
-) else (
-    echo [ERROR] åˆ›å»ºå¼€æœºè‡ªå¯å¿«æ·æ–¹å¼å¤±è´¥ã€‚
-)
-
-echo.
-pause
+@echo off
+setlocal
+title Super Productivity - ÅäÖÃ¿ª»ú×ÔÆô¶¯
+
+echo =======================================================
+echo  Super Productivity ±¾µØÇÅ½Ó - ÅäÖÃ¿ª»ú×ÔÆô¶¯
+echo =======================================================
+echo.
+
+set "SCRIPT_DIR=%~dp0"
+set "TARGET=%SCRIPT_DIR%start_service_hidden.vbs"
+set "STARTUP_FOLDER=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
+set "SHORTCUT=%STARTUP_FOLDER%\SuperProductivityBridge.lnk"
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%SHORTCUT%'); $s.TargetPath = '%TARGET%'; $s.WorkingDirectory = '%SCRIPT_DIR%'; $s.Save()"
+
+if exist "%SHORTCUT%" (
+    echo [OK] ÒÑ³É¹¦ÔÚ Windows ¿ª»ú×ÔÆôÎÄ¼ş¼Ğ´´½¨¿ì½İ·½Ê½:
+    echo      %SHORTCUT%
+    echo µçÄÔÖØÆôºó½«×Ô¶¯ÔÚºóÌ¨Æô¶¯ÇÅ½ÓÖúÊÖÓëÃÔÄã´°¿Ú¡£
+) else (
+    echo [ERROR] ´´½¨¿ª»ú×ÔÆô¿ì½İ·½Ê½Ê§°Ü¡£
+)
+
+echo.
+pause

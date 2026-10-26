@@ -1,18 +1,17 @@
-@echo off
-setlocal
-echo =======================================================
-echo  Super Productivity æœ¬åœ°æ¡¥æ¥ - ç§»é™¤å¼€æœºè‡ªå¯åŠ¨
-echo =======================================================
-echo.
-
-set "SHORTCUT=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\SuperProductivityBridge.lnk"
-
-if exist "%SHORTCUT%" (
-    del "%SHORTCUT%"
-    echo [OK] å·²ç§»é™¤å¼€æœºè‡ªå¯å¿«æ·æ–¹å¼ã€‚
-) else (
-    echo [INFO] æœªæ£€æµ‹åˆ°å¼€æœºè‡ªå¯å¿«æ·æ–¹å¼ï¼Œæ— éœ€å¤„ç†ã€‚
-)
-
-echo.
-pause
+@echo off
+setlocal
+title Super Productivity - È¡Ïû¿ª»ú×ÔÆô¶¯
+
+set "STARTUP_FOLDER=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
+set "SHORTCUT=%STARTUP_FOLDER%\SuperProductivityBridge.lnk"
+
+if exist "%SHORTCUT%" (
+    del /f /q "%SHORTCUT%"
+    echo [OK] ÒÑÉ¾³ı¿ª»ú×ÔÆô¿ì½İ·½Ê½:
+    echo      %SHORTCUT%
+) else (
+    echo [INFO] Î´¼ì²âµ½ÒÑÅäÖÃµÄ×ÔÆô¿ì½İ·½Ê½£¬ÎŞĞè²Ù×÷¡£
+)
+
+echo.
+pause

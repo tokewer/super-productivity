@@ -1,25 +1,30 @@
-@echo off
-setlocal
-title Super Productivity æœ¬åœ°å¤‡ä»½åŠ©æ‰‹ä¸è¿·ä½ çª—å£
-
-cd /d "%~dp0local-bridge"
-
-where python >nul 2>nul
-if errorlevel 1 (
-    echo [ERROR] æœªæ‰¾åˆ° Pythonã€‚è¯·ç¡®ä¿ Python 3 å·²å®‰è£…ã€‚
-    pause
-    exit /b 1
-)
-
-echo ========================================================
-echo  Super Productivity å¢å¼ºç³»ç»Ÿ - æœ¬åœ°åŠ©æ‰‹ä¸è¿·ä½ çª—å£
-echo  - ç›‘å¬åœ°å€: http://127.0.0.1:4567
-echo  - å¤‡ä»½ç›®å½•: %~dp0local-bridge\backups
-echo ========================================================
-echo.
-python main.py
-if errorlevel 1 (
-    echo.
-    echo [ERROR] æœ¬åœ°åŠ©æ‰‹å¼‚å¸¸é€€å‡ºã€‚
-    pause
-)
+@echo off
+setlocal
+title Super Productivity ±¾µØ±¸·İÖúÊÖÓëÃÔÄã´°¿Ú
+
+pushd "%~dp0local-bridge"
+
+where python >nul 2>nul
+if errorlevel 1 (
+    echo [ERROR] ÏµÍ³Î´ÕÒµ½ Python¡£
+    echo Çë°²×° Python 3 ²¢È·±£ÔÚ°²×°Ê±¹´Ñ¡ÁË "Add python.exe to PATH"¡£
+    pause
+    popd
+    exit /b 1
+)
+
+echo ========================================================
+echo  Super Productivity ÔöÇ¿ÏµÍ³ - ±¾µØÖúÊÖÓëÃÔÄã´°¿Ú
+echo  - ¼àÌıµØÖ·: http://127.0.0.1:4567
+echo  - ±¸·İÄ¿Â¼: %~dp0local-bridge\backups
+echo ========================================================
+echo.
+
+python main.py %*
+if errorlevel 1 (
+    echo.
+    echo [ERROR] ±¾µØÖúÊÖÒÑÍË³ö¡£
+    pause
+)
+
+popd

@@ -1,21 +1,26 @@
-@echo off
-setlocal
-title Super Productivity æœ¬åœ°æ¡¥æ¥åŠ©æ‰‹ä¸è¿·ä½ çª—å£
-
-cd /d "%~dp0"
-
-where python >nul 2>nul
-if errorlevel 1 (
-    echo [ERROR] æœªæ‰¾åˆ° Pythonã€‚è¯·ç¡®ä¿ Python 3 å·²å®‰è£…å¹¶æ·»åŠ åˆ° PATHã€‚
-    pause
-    exit /b 1
-)
-
-echo [INFO] æ­£åœ¨å¯åŠ¨ Super Productivity æœ¬åœ°åŠ©æ‰‹...
-echo [INFO] æ¡¥æ¥æ¥å£å°†ç›‘å¬: http://127.0.0.1:4567
-echo.
-python main.py
-if errorlevel 1 (
-    echo [ERROR] ç¨‹åºå¼‚å¸¸é€€å‡ºã€‚
-    pause
-)
+@echo off
+setlocal
+title Super Productivity ±¾µØÇÅ½ÓÖúÊÖÓëÃÔÄã´°¿Ú
+
+pushd "%~dp0"
+
+where python >nul 2>nul
+if errorlevel 1 (
+    echo [ERROR] ÏµÍ³Î´ÕÒµ½ Python¡£ÇëÈ·±£ Python 3 ÒÑ°²×°²¢Ìí¼Óµ½ PATH¡£
+    pause
+    popd
+    exit /b 1
+)
+
+echo [INFO] ÕıÔÚÆô¶¯ Super Productivity ±¾µØÖúÊÖ...
+echo [INFO] ÇÅ½Ó½Ó¿Ú¼àÌıµØÖ·: http://127.0.0.1:4567
+echo.
+
+python main.py %*
+if errorlevel 1 (
+    echo.
+    echo [ERROR] ³ÌĞòÒì³£ÍË³ö¡£
+    pause
+)
+
+popd

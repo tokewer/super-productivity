@@ -1,34 +1,37 @@
-@echo off
-setlocal
-title Super Productivity ç³»ç»ŸéªŒè¯ä¸Žè‡ªåŠ¨åŒ–æµ‹è¯•
-
-cd /d "%~dp0"
-
-where python >nul 2>nul
-if errorlevel 1 (
-    echo [ERROR] æœªæ‰¾åˆ° Pythonã€‚
-    pause
-    exit /b 1
-)
-
-echo ========================================================
-echo  æ­£åœ¨è¿è¡Œ Super Productivity å¢žå¼ºç³»ç»Ÿè‡ªåŠ¨åŒ–æµ‹è¯•å¥—ä»¶...
-echo ========================================================
-echo.
-python tests/test_local_bridge.py -v
-set "TEST_CODE=%ERRORLEVEL%"
-
-echo.
-if "%TEST_CODE%"=="0" (
-    echo ========================================================
-    echo  [PASS] å…¨éƒ¨æµ‹è¯•é€šè¿‡ï¼ç³»ç»Ÿå¤„äºŽé«˜å¯ç”¨ä¸Žæ•°æ®å®‰å…¨å°±ç»ªçŠ¶æ€ã€‚
-    echo ========================================================
-) else (
-    echo ========================================================
-    echo  [FAIL] æµ‹è¯•å‘çŽ°å¼‚å¸¸ï¼Œé€€å‡ºç : %TEST_CODE%
-    echo ========================================================
-)
-
-echo.
-pause
-exit /b %TEST_CODE%
+@echo off
+setlocal
+title Super Productivity ÏµÍ³ÑéÖ¤Óë×Ô¶¯»¯²âÊÔ
+
+pushd "%~dp0"
+
+where python >nul 2>nul
+if errorlevel 1 (
+    echo [ERROR] ÏµÍ³Î´ÕÒµ½ Python¡£
+    pause
+    popd
+    exit /b 1
+)
+
+echo ========================================================
+echo  ÕýÔÚÔËÐÐ Super Productivity ÔöÇ¿ÏµÍ³×Ô¶¯»¯²âÊÔÌ×¼þ...
+echo ========================================================
+echo.
+
+python tests/test_local_bridge.py -v
+set "TEST_CODE=%ERRORLEVEL%"
+
+echo.
+if "%TEST_CODE%"=="0" (
+    echo ========================================================
+    echo  [PASS] È«²¿²âÊÔÍ¨¹ý£¡ÏµÍ³´¦ÓÚ¸ß¿ÉÓÃÓëÊý¾Ý°²È«¾ÍÐ÷×´Ì¬¡£
+    echo ========================================================
+) else (
+    echo ========================================================
+    echo  [FAIL] ²âÊÔ·¢ÏÖÒì³££¬ÍË³öÂë: %TEST_CODE%
+    echo ========================================================
+)
+
+echo.
+pause
+popd
+exit /b %TEST_CODE%
