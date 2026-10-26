@@ -141,3 +141,9 @@ tests/test_backups_tmp/
 tests/test_server_backups/
 supersync-deploy/.env
 supersync-deploy/backups/
+
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo

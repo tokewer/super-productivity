@@ -41,14 +41,18 @@ export class LocalBridgeService {
     this._probeBridge();
 
     // 1. Live Task & Timer Sync
-    combineLatest([this._taskService.currentTask$, this._taskService.currentTaskProgress$])
+    combineLatest([
+      this._taskService.currentTask$,
+      this._taskService.currentTaskId$,
+      this._taskService.currentTaskProgress$,
+    ])
       .pipe(
         throttleTime(STATE_SYNC_INTERVAL_MS, undefined, { leading: true, trailing: true }),
         takeUntilDestroyed(this._destroyRef),
       )
-      .subscribe(([currentTask]) => {
+      .subscribe(([currentTask, currentTaskId]) => {
         this._currentTask = currentTask;
-        this._sendCurrentState(currentTask);
+        this._sendCurrentState(currentTask, !!currentTaskId);
       });
 
     // 2. Action Polling (for Mini Window control commands)
@@ -61,7 +65,17 @@ export class LocalBridgeService {
         this._pollPendingActions();
       });
 
-    // 3. Periodic High-Reliability Auto-Backup (every 15 minutes)
+    // 3. Auto-reconnect probe: polls bridge every 4s if currently offline
+    interval(4000)
+      .pipe(
+        filter(() => !this._isOnline),
+        takeUntilDestroyed(this._destroyRef),
+      )
+      .subscribe(() => {
+        this._probeBridge();
+      });
+
+    // 4. Periodic High-Reliability Auto-Backup (every 15 minutes)
     interval(AUTO_BACKUP_INTERVAL_MS)
       .pipe(
         filter(() => this._isOnline),
@@ -71,16 +85,16 @@ export class LocalBridgeService {
         this.triggerBackup('auto_interval');
       });
 
-    // 4. Tab visibility reconciliation
+    // 5. Tab visibility reconciliation
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', () => {
         if (!document.hidden && this._isOnline) {
-          this._sendCurrentState(this._currentTask);
+          this._sendCurrentState(this._currentTask, !!this._taskService.currentTaskId());
         }
       });
     }
 
-    // 5. Final snapshot before browser tab unloads
+    // 6. Final snapshot before browser tab unloads
     if (typeof window !== 'undefined') {
       window.addEventListener('beforeunload', () => {
         this._sendBeaconBackup();
@@ -90,9 +104,37 @@ export class LocalBridgeService {
 
   private _loadSettings(): void {
     try {
+      if (typeof window !== 'undefined' && window.location.hash) {
+        const hash = window.location.hash.substring(1);
+        const params = new URLSearchParams(hash);
+        const token = params.get('bridge_token');
+        const port = params.get('bridge_port');
+        let updated = false;
+
+        if (token) {
+          this._authToken = token.trim();
+          localStorage.setItem('SP_LOCAL_BRIDGE_TOKEN', this._authToken);
+          params.delete('bridge_token');
+          updated = true;
+        }
+        if (port) {
+          this._bridgeUrl = `http://127.0.0.1:${port.trim()}`;
+          localStorage.setItem('SP_LOCAL_BRIDGE_URL', this._bridgeUrl);
+          params.delete('bridge_port');
+          updated = true;
+        }
+        if (updated && window.history?.replaceState) {
+          const rest = params.toString();
+          const cleanUrl = window.location.pathname + (rest ? `#${rest}` : '');
+          window.history.replaceState(null, '', cleanUrl);
+        }
+      }
+
       this._bridgeUrl =
         localStorage.getItem('SP_LOCAL_BRIDGE_URL') || BRIDGE_DEFAULT_URL;
-      this._authToken = localStorage.getItem('SP_LOCAL_BRIDGE_TOKEN') || '';
+      if (!this._authToken) {
+        this._authToken = localStorage.getItem('SP_LOCAL_BRIDGE_TOKEN') || '';
+      }
     } catch {
       // Fallback
     }
@@ -115,8 +157,18 @@ export class LocalBridgeService {
         },
       });
       if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data?.token && !this._authToken) {
+          this._authToken = data.token;
+          try {
+            localStorage.setItem('SP_LOCAL_BRIDGE_TOKEN', data.token);
+          } catch {}
+        }
         this._isOnline = true;
         Log.log('LocalBridgeService: Connected to local bridge server');
+        if (this._currentTask) {
+          this._sendCurrentState(this._currentTask, !!this._taskService.currentTaskId());
+        }
         return true;
       }
     } catch {
@@ -125,7 +177,7 @@ export class LocalBridgeService {
     return false;
   }
 
-  private async _sendCurrentState(currentTask: any): Promise<void> {
+  private async _sendCurrentState(currentTask: any, isTracking: boolean = false): Promise<void> {
     if (!this._isOnline && !(await this._probeBridge())) {
       return;
     }
@@ -134,7 +186,7 @@ export class LocalBridgeService {
       activeTaskId: currentTask?.id || null,
       activeTaskTitle: currentTask?.title || '无活跃任务',
       timeSpentMs: currentTask?.timeSpent || 0,
-      isTracking: !!currentTask?.id,
+      isTracking: isTracking,
       mode: 'task',
       lastTick: Date.now(),
     };

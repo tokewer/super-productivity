@@ -37,6 +37,23 @@
   const BACKUP_INTERVAL_MS = 15 * 60 * 1000; // 15 mins default
   let isBackingUp = false;
 
+  // Auto-read token from URL hash if provided
+  if (window.location.hash) {
+    try {
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const token = hashParams.get('bridge_token');
+      const port = hashParams.get('bridge_port');
+      if (token) {
+        authToken = token.trim();
+        GM_setValue('sp_bridge_token', authToken);
+      }
+      if (port) {
+        bridgeUrl = `http://127.0.0.1:${port.trim()}`;
+        GM_setValue('sp_bridge_url', bridgeUrl);
+      }
+    } catch (e) {}
+  }
+
   // Cross-origin request abstraction
   const sendRequest = (method, path, data = null) => {
     const url = `${bridgeUrl}${path}`;

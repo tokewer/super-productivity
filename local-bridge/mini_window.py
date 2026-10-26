@@ -1,7 +1,9 @@
 """
-Super Productivity Enhanced Local Bridge - Mini Timer Window
-Ultra-lightweight floating desktop widget (Tkinter native, zero extra dependencies).
-Always-on-top, draggable, position persistence, real-time timer sync with Super Productivity.
+Super Productivity Enhanced Local Bridge - Frameless Modern Mini Timer Window
+- Borderless & frameless modern dark theme (removes native Windows window chrome / "辐条").
+- Smooth dragging, always-on-top toggle, compact/expanded mode, position memory.
+- Real-time bidirectional synchronization with https://tokewer.github.io/super-productivity/
+- Instant play/pause control and atomic local backup trigger.
 """
 
 import os
@@ -14,6 +16,7 @@ import webbrowser
 import threading
 import tkinter as tk
 from tkinter import ttk, messagebox
+import ctypes
 
 BRIDGE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BRIDGE_DIR, "config.json")
@@ -32,12 +35,13 @@ def format_time(ms: int) -> str:
 class MiniTimerWidget:
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("Super Productivity Mini")
         self.config = self._load_config()
         self.port = self.config.get("port", 4567)
         self.token = self.config.get("auth_token", "")
         self.base_url = f"http://127.0.0.1:{self.port}"
-        self.gh_pages_url = self.config.get("web_url", "https://tokewer.github.io/super-productivity/")
+        self.gh_pages_url = self.config.get(
+            "web_url", "https://tokewer.github.io/super-productivity/"
+        )
 
         # State tracking
         self.is_tracking = False
@@ -47,18 +51,29 @@ class MiniTimerWidget:
         self.web_online = False
         self.last_backup_status = "NOT_STARTED"
         self.is_always_on_top = self.config.get("mini_window", {}).get("always_on_top", True)
+        self.is_compact = self.config.get("mini_window", {}).get("compact", False)
 
-        # Style configuration (Modern Dark Theme)
-        self.bg_color = "#1e1e24"
-        self.fg_color = "#f4f4f6"
-        self.accent_green = "#4caf50"
-        self.accent_amber = "#ff9800"
-        self.accent_blue = "#2196f3"
-        self.accent_gray = "#757575"
-        self.accent_red = "#f44336"
+        # Theme Colors (Modern Obsidian Dark)
+        self.c_bg = "#141518"         # Deepest matte background
+        self.c_card = "#1c1e23"       # Card / container background
+        self.c_border = "#2d3139"     # Subtle border outline
+        self.c_header = "#181a1f"     # Header bar
+        self.c_text = "#f3f4f6"       # Primary text
+        self.c_text_dim = "#9ca3af"   # Secondary text
+        self.c_green = "#22c55e"      # Tracking green
+        self.c_amber = "#f59e0b"      # Paused amber
+        self.c_red = "#ef4444"        # Offline red
+        self.c_blue = "#38bdf8"       # Accent blue
+        self.c_btn = "#262932"        # Button background
+        self.c_btn_hover = "#323642"  # Button hover
+
+        # Drag tracking
+        self._drag_start_x = 0
+        self._drag_start_y = 0
 
         self._init_window()
         self._build_ui()
+        self._setup_context_menu()
         self._start_poll_thread()
         self._start_timer_loop()
 
@@ -81,157 +96,295 @@ class MiniTimerWidget:
             cfg["mini_window"]["x"] = x
             cfg["mini_window"]["y"] = y
             cfg["mini_window"]["always_on_top"] = self.is_always_on_top
+            cfg["mini_window"]["compact"] = self.is_compact
             with open(CONFIG_PATH, "w", encoding="utf-8") as f:
                 json.dump(cfg, f, indent=2, ensure_ascii=False)
         except Exception:
             pass
 
     def _init_window(self):
-        self.root.configure(bg=self.bg_color)
+        # 1. REMOVE WINDOWS NATIVE TITLEBAR & BORDERS (去掉windows自带的辐条/标题栏)
+        self.root.overrideredirect(True)
+
         win_cfg = self.config.get("mini_window", {})
         x = win_cfg.get("x", 120)
         y = win_cfg.get("y", 120)
-        width = win_cfg.get("width", 330)
-        height = win_cfg.get("height", 140)
+        self.full_width = 340
+        self.full_height = 136
+        self.compact_width = 200
+        self.compact_height = 42
 
-        self.root.geometry(f"{width}x{height}+{x}+{y}")
-        self.root.minsize(280, 120)
+        w = self.compact_width if self.is_compact else self.full_width
+        h = self.compact_height if self.is_compact else self.full_height
+
+        self.root.geometry(f"{w}x{h}+{x}+{y}")
         self.root.wm_attributes("-topmost", self.is_always_on_top)
+        self.root.configure(bg=self.c_border)
 
-        # Handle window close
-        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        # Enable Windows Taskbar representation for borderless window
+        try:
+            hwnd = ctypes.windll.user32.GetParent(self.root.winfo_id())
+            GWL_EXSTYLE = -20
+            WS_EX_APPWINDOW = 0x00040000
+            WS_EX_TOOLWINDOW = 0x00000080
+            style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+            style = (style & ~WS_EX_TOOLWINDOW) | WS_EX_APPWINDOW
+            ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style)
+        except Exception:
+            pass
 
     def _build_ui(self):
-        # Outer container
-        self.main_frame = tk.Frame(self.root, bg=self.bg_color, padx=10, pady=8)
-        self.main_frame.pack(fill=tk.BOTH, expand=True)
+        # 1px border container
+        self.border_frame = tk.Frame(self.root, bg=self.c_border, bd=0)
+        self.border_frame.pack(fill=tk.BOTH, expand=True, padx=1, pady=1)
 
-        # Header row: Status pill & Window controls
-        header_row = tk.Frame(self.main_frame, bg=self.bg_color)
-        header_row.pack(fill=tk.X, side=tk.TOP)
+        # Main inner container
+        self.container = tk.Frame(self.border_frame, bg=self.c_bg, bd=0)
+        self.container.pack(fill=tk.BOTH, expand=True)
 
-        self.status_label = tk.Label(
-            header_row,
-            text="○ 等待连接",
+        # Top Custom Draggable Bar
+        self.header_bar = tk.Frame(self.container, bg=self.c_header, height=28)
+        self.header_bar.pack(fill=tk.X, side=tk.TOP)
+        self.header_bar.pack_propagate(False)
+
+        # Status Dot & Title
+        self.status_canvas = tk.Canvas(
+            self.header_bar, width=12, height=12, bg=self.c_header, highlightthickness=0
+        )
+        self.status_canvas.pack(side=tk.LEFT, padx=(8, 4))
+        self.status_dot = self.status_canvas.create_oval(2, 2, 10, 10, fill=self.c_red, outline="")
+
+        self.title_label = tk.Label(
+            self.header_bar,
+            text="SP Mini",
             font=("Segoe UI", 9, "bold"),
-            bg=self.bg_color,
-            fg=self.accent_gray
+            bg=self.c_header,
+            fg=self.c_text_dim,
+            cursor="fleur"
         )
-        self.status_label.pack(side=tk.LEFT)
+        self.title_label.pack(side=tk.LEFT)
 
-        self.backup_badge = tk.Label(
-            header_row,
-            text="🛡 备份就绪",
+        # Window Controls on Right
+        # Close button
+        self.btn_close = tk.Label(
+            self.header_bar,
+            text="✕",
+            font=("Segoe UI", 9, "bold"),
+            bg=self.c_header,
+            fg=self.c_text_dim,
+            width=3,
+            cursor="hand2"
+        )
+        self.btn_close.pack(side=tk.RIGHT)
+        self.btn_close.bind("<Button-1>", lambda e: self._on_close())
+        self.btn_close.bind("<Enter>", lambda e: self.btn_close.config(bg="#dc2626", fg="#ffffff"))
+        self.btn_close.bind("<Leave>", lambda e: self.btn_close.config(bg=self.c_header, fg=self.c_text_dim))
+
+        # Compact toggle button
+        self.btn_compact = tk.Label(
+            self.header_bar,
+            text="🗕" if not self.is_compact else "🗖",
+            font=("Segoe UI", 9),
+            bg=self.c_header,
+            fg=self.c_text_dim,
+            width=3,
+            cursor="hand2"
+        )
+        self.btn_compact.pack(side=tk.RIGHT)
+        self.btn_compact.bind("<Button-1>", lambda e: self._toggle_compact())
+        self.btn_compact.bind("<Enter>", lambda e: self.btn_compact.config(bg=self.c_btn_hover, fg="#ffffff"))
+        self.btn_compact.bind("<Leave>", lambda e: self.btn_compact.config(bg=self.c_header, fg=self.c_text_dim))
+
+        # Pin / Always on top button
+        self.btn_pin = tk.Label(
+            self.header_bar,
+            text="📌",
             font=("Segoe UI", 8),
-            bg=self.bg_color,
-            fg="#9e9e9e"
+            bg=self.c_header,
+            fg=self.c_blue if self.is_always_on_top else self.c_text_dim,
+            width=3,
+            cursor="hand2"
         )
-        self.backup_badge.pack(side=tk.LEFT, padx=10)
+        self.btn_pin.pack(side=tk.RIGHT)
+        self.btn_pin.bind("<Button-1>", lambda e: self._toggle_pin())
+        self.btn_pin.bind("<Enter>", lambda e: self.btn_pin.config(bg=self.c_btn_hover))
+        self.btn_pin.bind("<Leave>", lambda e: self.btn_pin.config(bg=self.c_header))
 
-        # Pin button (Always on top toggle)
-        self.pin_btn = tk.Button(
-            header_row,
-            text="📌 置顶" if self.is_always_on_top else "📍 取消置顶",
+        # Web App launch button
+        self.btn_web_hdr = tk.Label(
+            self.header_bar,
+            text="🌐",
             font=("Segoe UI", 8),
-            bg="#2c2c34",
-            fg=self.fg_color,
-            relief=tk.FLAT,
-            padx=4,
-            pady=1,
-            command=self._toggle_pin
+            bg=self.c_header,
+            fg=self.c_text_dim,
+            width=3,
+            cursor="hand2"
         )
-        self.pin_btn.pack(side=tk.RIGHT)
+        self.btn_web_hdr.pack(side=tk.RIGHT)
+        self.btn_web_hdr.bind("<Button-1>", lambda e: self._open_web())
+        self.btn_web_hdr.bind("<Enter>", lambda e: self.btn_web_hdr.config(bg=self.c_btn_hover, fg=self.c_blue))
+        self.btn_web_hdr.bind("<Leave>", lambda e: self.btn_web_hdr.config(bg=self.c_header, fg=self.c_text_dim))
 
-        # Task Title
+        # Body Frame (contains task title & timer controls)
+        self.body_frame = tk.Frame(self.container, bg=self.c_bg, padx=10, pady=6)
+        self.body_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Task Title Label
         self.task_label = tk.Label(
-            self.main_frame,
-            text="无活跃任务",
-            font=("Segoe UI", 11, "bold"),
-            bg=self.bg_color,
-            fg=self.fg_color,
-            anchor="w"
+            self.body_frame,
+            text="正在等待网页版连接...",
+            font=("Microsoft YaHei UI", 10, "bold"),
+            bg=self.c_bg,
+            fg=self.c_text,
+            anchor="w",
+            cursor="fleur"
         )
-        self.task_label.pack(fill=tk.X, pady=(6, 2))
+        self.task_label.pack(fill=tk.X, pady=(0, 4))
 
-        # Bottom row: Timer & Action Buttons
-        bottom_row = tk.Frame(self.main_frame, bg=self.bg_color)
-        bottom_row.pack(fill=tk.X, side=tk.BOTTOM, pady=(4, 0))
+        # Bottom row: Big Timer & Action Buttons
+        self.bottom_row = tk.Frame(self.body_frame, bg=self.c_bg)
+        self.bottom_row.pack(fill=tk.X, side=tk.BOTTOM)
 
-        # Time display
+        # Time Display
         self.time_label = tk.Label(
-            bottom_row,
+            self.bottom_row,
             text="00:00",
             font=("Segoe UI", 20, "bold"),
-            bg=self.bg_color,
-            fg=self.fg_color
+            bg=self.c_bg,
+            fg=self.c_text_dim,
+            cursor="fleur"
         )
         self.time_label.pack(side=tk.LEFT)
 
-        # Action Buttons container
-        btn_box = tk.Frame(bottom_row, bg=self.bg_color)
-        btn_box.pack(side=tk.RIGHT)
+        # Button group
+        self.btn_box = tk.Frame(self.bottom_row, bg=self.c_bg)
+        self.btn_box.pack(side=tk.RIGHT)
 
+        # Play / Pause Pill Button
         self.play_btn = tk.Button(
-            btn_box,
+            self.btn_box,
             text="▶ 开始",
             font=("Segoe UI", 9, "bold"),
-            bg="#388e3c",
+            bg="#2e7d32",
             fg="#ffffff",
-            activebackground="#4caf50",
+            activebackground="#388e3c",
             activeforeground="#ffffff",
             relief=tk.FLAT,
-            padx=8,
-            pady=3,
+            bd=0,
+            padx=10,
+            pady=4,
+            cursor="hand2",
             command=self._toggle_tracking
         )
         self.play_btn.pack(side=tk.LEFT, padx=3)
 
+        # Backup Button
         self.backup_btn = tk.Button(
-            btn_box,
+            self.btn_box,
             text="💾 备份",
-            font=("Segoe UI", 9),
-            bg="#2c2c34",
-            fg=self.fg_color,
-            activebackground="#3e3e4a",
+            font=("Segoe UI", 8),
+            bg=self.c_btn,
+            fg=self.c_text,
+            activebackground=self.c_btn_hover,
             activeforeground="#ffffff",
             relief=tk.FLAT,
-            padx=6,
-            pady=3,
+            bd=0,
+            padx=8,
+            pady=4,
+            cursor="hand2",
             command=self._trigger_backup
         )
         self.backup_btn.pack(side=tk.LEFT, padx=3)
 
+        # Open Web Button
         self.web_btn = tk.Button(
-            btn_box,
+            self.btn_box,
             text="🌐 网页",
-            font=("Segoe UI", 9),
-            bg="#2c2c34",
-            fg=self.fg_color,
-            activebackground="#3e3e4a",
+            font=("Segoe UI", 8),
+            bg=self.c_btn,
+            fg=self.c_text,
+            activebackground=self.c_btn_hover,
             activeforeground="#ffffff",
             relief=tk.FLAT,
-            padx=6,
-            pady=3,
+            bd=0,
+            padx=8,
+            pady=4,
+            cursor="hand2",
             command=self._open_web
         )
         self.web_btn.pack(side=tk.LEFT, padx=3)
 
+        # Setup Drag Handlers across draggable components
+        for widget in [self.header_bar, self.title_label, self.container, self.task_label, self.time_label]:
+            widget.bind("<Button-1>", self._start_drag)
+            widget.bind("<B1-Motion>", self._on_drag)
+
+        if self.is_compact:
+            self._apply_compact_mode()
+
+    def _setup_context_menu(self):
+        self.menu = tk.Menu(self.root, tearoff=0, bg=self.c_card, fg=self.c_text, activebackground=self.c_btn_hover)
+        self.menu.add_command(label="🌐 打开 Super Productivity 网页版", command=self._open_web)
+        self.menu.add_separator()
+        self.menu.add_command(label="📌 切换窗口置顶", command=self._toggle_pin)
+        self.menu.add_command(label="🗕 切换极简悬浮条", command=self._toggle_compact)
+        self.menu.add_command(label="💾 立即保存本地备份", command=self._trigger_backup)
+        self.menu.add_separator()
+        self.menu.add_command(label="✕ 退出本地助手", command=self._on_close)
+
+        for w in [self.root, self.container, self.header_bar, self.body_frame, self.task_label, self.time_label]:
+            w.bind("<Button-3>", lambda e: self.menu.tk_popup(e.x_root, e.y_root))
+
+    def _start_drag(self, event):
+        self._drag_start_x = event.x_root - self.root.winfo_x()
+        self._drag_start_y = event.y_root - self.root.winfo_y()
+
+    def _on_drag(self, event):
+        x = event.x_root - self._drag_start_x
+        y = event.y_root - self._drag_start_y
+        self.root.geometry(f"+{x}+{y}")
+        self._save_window_position()
+
     def _toggle_pin(self):
         self.is_always_on_top = not self.is_always_on_top
         self.root.wm_attributes("-topmost", self.is_always_on_top)
-        self.pin_btn.config(text="📌 置顶" if self.is_always_on_top else "📍 取消置顶")
+        self.btn_pin.config(fg=self.c_blue if self.is_always_on_top else self.c_text_dim)
         self._save_window_position()
 
+    def _toggle_compact(self):
+        self.is_compact = not self.is_compact
+        self._apply_compact_mode()
+        self._save_window_position()
+
+    def _apply_compact_mode(self):
+        x = self.root.winfo_x()
+        y = self.root.winfo_y()
+        if self.is_compact:
+            self.root.geometry(f"{self.compact_width}x{self.compact_height}+{x}+{y}")
+            self.task_label.pack_forget()
+            self.backup_btn.pack_forget()
+            self.web_btn.pack_forget()
+            self.time_label.config(font=("Segoe UI", 13, "bold"))
+            self.btn_compact.config(text="🗖")
+        else:
+            self.root.geometry(f"{self.full_width}x{self.full_height}+{x}+{y}")
+            self.task_label.pack(fill=tk.X, pady=(0, 4))
+            self.time_label.config(font=("Segoe UI", 20, "bold"))
+            self.play_btn.pack(side=tk.LEFT, padx=3)
+            self.backup_btn.pack(side=tk.LEFT, padx=3)
+            self.web_btn.pack(side=tk.LEFT, padx=3)
+            self.btn_compact.config(text="🗕")
+
     def _open_web(self):
-        webbrowser.open(self.gh_pages_url)
+        # Open web URL with seamless auto-handshake hash
+        url = f"{self.gh_pages_url}#bridge_token={self.token}&bridge_port={self.port}"
+        webbrowser.open(url)
 
     def _toggle_tracking(self):
-        """Sends action to local bridge for web app to consume."""
         self._send_action("toggle_tracking")
 
     def _trigger_backup(self):
-        """Sends backup trigger action to web app."""
-        self.backup_badge.config(text="⏳ 正在备份...", fg=self.accent_amber)
+        self.backup_btn.config(text="⏳ 备份中", bg=self.c_amber)
         self._send_action("trigger_backup")
 
     def _send_action(self, action_name: str):
@@ -248,9 +401,9 @@ class MiniTimerWidget:
                     },
                     method="POST"
                 )
-                with urllib.request.urlopen(req, timeout=3) as resp:
+                with urllib.request.urlopen(req, timeout=3):
                     pass
-            except Exception as e:
+            except Exception:
                 pass
         threading.Thread(target=_req, daemon=True).start()
 
@@ -258,7 +411,7 @@ class MiniTimerWidget:
         def _poll():
             while True:
                 try:
-                    # 1. Fetch live state
+                    # 1. Fetch live tracking state from bridge
                     req = urllib.request.Request(
                         f"{self.base_url}/api/state",
                         headers={"X-Bridge-Token": self.token}
@@ -280,14 +433,14 @@ class MiniTimerWidget:
                 except Exception:
                     self.web_online = False
 
-                time.sleep(1.0)
+                time.sleep(0.8)
 
         t = threading.Thread(target=_poll, daemon=True)
         t.start()
 
     def _start_timer_loop(self):
         def _tick():
-            # If tracking, advance display smoothly
+            # Real-time counter advance
             if self.is_tracking and self.web_online:
                 elapsed_since_sync = int((time.time() - self.last_sync_time) * 1000)
                 display_ms = self.current_time_ms + elapsed_since_sync
@@ -297,29 +450,35 @@ class MiniTimerWidget:
             self.time_label.config(text=format_time(display_ms))
 
             # Task title truncation
-            title_text = self.active_title
-            if len(title_text) > 28:
-                title_text = title_text[:26] + "..."
-            self.task_label.config(text=title_text)
+            raw_title = self.active_title
+            if len(raw_title) > 24:
+                raw_title = raw_title[:22] + "..."
+            self.task_label.config(text=raw_title)
 
-            # Update status badges and button text
+            # Update status LED, text colors & action buttons
             if not self.web_online:
-                self.status_label.config(text="⚠ 网页未连接", fg=self.accent_red)
-                self.play_btn.config(text="▶ 开始", bg="#424242", state=tk.DISABLED)
+                self.status_canvas.itemconfig(self.status_dot, fill=self.c_red)
+                self.title_label.config(text="SP Mini (等待网页连接)", fg=self.c_red)
+                self.time_label.config(fg=self.c_text_dim)
+                self.play_btn.config(text="▶ 开始", bg="#374151", state=tk.DISABLED)
+                if not self.is_compact:
+                    self.task_label.config(text="未连接网页版 (点击 🌐 启动)")
             elif self.is_tracking:
-                self.status_label.config(text="● 正在计时", fg=self.accent_green)
-                self.play_btn.config(text="⏸ 暂停", bg="#f57c00", state=tk.NORMAL)
+                self.status_canvas.itemconfig(self.status_dot, fill=self.c_green)
+                self.title_label.config(text="SP Mini (正在计时)", fg=self.c_green)
+                self.time_label.config(fg=self.c_green)
+                self.play_btn.config(text="⏸ 暂停", bg="#d97706", state=tk.NORMAL)
             else:
-                self.status_label.config(text="⏸ 计时暂停" if self.active_title != "无活跃任务" else "○ 计时空闲", fg=self.accent_amber if self.active_title != "无活跃任务" else self.accent_gray)
-                self.play_btn.config(text="▶ 开始", bg="#388e3c", state=tk.NORMAL)
+                self.status_canvas.itemconfig(self.status_dot, fill=self.c_amber)
+                self.title_label.config(text="SP Mini (已就绪)", fg=self.c_text_dim)
+                self.time_label.config(fg=self.c_text)
+                self.play_btn.config(text="▶ 开始", bg="#15803d", state=tk.NORMAL)
 
-            # Backup badge
+            # Backup button feedback reset
             if self.last_backup_status == "SUCCESS":
-                self.backup_badge.config(text="🛡 备份正常", fg=self.accent_green)
-            elif self.last_backup_status == "IN_PROGRESS":
-                self.backup_badge.config(text="⏳ 正在备份", fg=self.accent_amber)
+                self.backup_btn.config(text="🛡 备份OK", bg=self.c_btn)
             elif self.last_backup_status == "ERROR":
-                self.backup_badge.config(text="❌ 备份异常", fg=self.accent_red)
+                self.backup_btn.config(text="❌ 备份失败", bg="#b91c1c")
 
             self.root.after(200, _tick)
 
@@ -328,6 +487,7 @@ class MiniTimerWidget:
     def _on_close(self):
         self._save_window_position()
         self.root.destroy()
+        sys.exit(0)
 
 
 def run_mini_window():

@@ -164,7 +164,12 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _verify_auth(self) -> bool:
-        """Verifies random bearer token from X-Bridge-Token or Authorization header."""
+        """Verifies random bearer token from X-Bridge-Token or Authorization header,
+        or validates requests originating from allowed origins (GitHub Pages / localhost)."""
+        origin = self.headers.get("Origin")
+        if origin and self._is_origin_allowed(origin):
+            return True
+
         auth_header = self.headers.get("X-Bridge-Token")
         if not auth_header:
             auth = self.headers.get("Authorization", "")
@@ -179,9 +184,9 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                 auth_header = qs["token"][0]
 
         expected_token = self.state.token
-        if not auth_header or not secrets.compare_digest(auth_header, expected_token):
-            return False
-        return True
+        if auth_header and secrets.compare_digest(auth_header, expected_token):
+            return True
+        return False
 
     def _send_json(self, status_code: int, data: dict):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
@@ -199,13 +204,16 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
 
-        # 1. Health check (no auth required for ping/discovery)
-        if path == "/api/health":
+        # 1. Health check & handshake (auto-discovery and token pairing for allowed origins)
+        if path in ("/api/health", "/api/handshake"):
+            origin = self.headers.get("Origin")
+            token_for_client = self.state.token if (origin and self._is_origin_allowed(origin)) else None
             latest = self.state.backup_mgr.get_latest_backup()
             self._send_json(200, {
                 "status": "ok",
                 "app": "SuperProductivityBridge",
                 "version": "1.0.0",
+                "token": token_for_client,
                 "total_backups": len(self.state.backup_mgr.list_backups()),
                 "last_backup_time": latest["timestamp"] if latest else None,
                 "backup_status": self.state.last_backup_status["status"]
