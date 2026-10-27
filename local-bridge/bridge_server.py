@@ -57,7 +57,9 @@ class BridgeState:
             "activeTaskId": None,
             "activeTaskTitle": "无活跃任务",
             "timeSpentMs": 0,
+            "timeEstimateMs": 0,
             "isTracking": False,
+            "trackingStartedAt": None,
             "mode": "task",
             "lastTick": int(time.time() * 1000),
             "webOnline": False
@@ -241,9 +243,13 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                 "latest_backup": latest
             })
         elif path == "/api/state":
-            # Check if web state is still considered fresh (< 15 seconds)
+            # Web page state freshness check
+            # When tracking, the browser may be minimized in background; keep online for up to 12h
+            # When not tracking, allow up to 120s of inactivity
+            is_tracking = bool(self.state.current_state.get("isTracking"))
+            timeout_limit = 43200 if is_tracking else 120
             time_since_tick = time.time() - (self.state.current_state.get("lastTick", 0) / 1000)
-            self.state.current_state["webOnline"] = time_since_tick < 15
+            self.state.current_state["webOnline"] = time_since_tick < timeout_limit
             self._send_json(200, {
                 "success": True,
                 "state": self.state.current_state
@@ -312,13 +318,17 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
 
         elif path == "/api/state":
             # Update live tracking state from web app
+            is_tracking = bool(data.get("isTracking"))
+            now_ms = int(time.time() * 1000)
             self.state.current_state.update({
                 "activeTaskId": data.get("activeTaskId"),
                 "activeTaskTitle": data.get("activeTaskTitle") or "无活跃任务",
                 "timeSpentMs": data.get("timeSpentMs", 0),
-                "isTracking": bool(data.get("isTracking")),
+                "timeEstimateMs": data.get("timeEstimateMs", 0),
+                "isTracking": is_tracking,
+                "trackingStartedAt": data.get("trackingStartedAt") or (now_ms if is_tracking else None),
                 "mode": data.get("mode", "task"),
-                "lastTick": int(time.time() * 1000),
+                "lastTick": now_ms,
                 "webOnline": True
             })
             self._send_json(200, {"success": True})

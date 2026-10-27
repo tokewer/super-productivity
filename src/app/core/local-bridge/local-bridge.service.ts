@@ -26,6 +26,9 @@ export class LocalBridgeService {
   private _isOnline = false;
   private _isBackingUp = false;
   private _currentTask: any = null;
+  private _isTracking = false;
+  private _trackingStartedAt: number | null = null;
+  private _worker: Worker | null = null;
 
   get isOnline(): boolean {
     return this._isOnline;
@@ -39,6 +42,7 @@ export class LocalBridgeService {
 
     this._loadSettings();
     this._probeBridge();
+    this._initBackgroundWorker();
 
     // 1. Live Task & Timer Sync
     combineLatest([
@@ -177,18 +181,71 @@ export class LocalBridgeService {
     return false;
   }
 
+  private _initBackgroundWorker(): void {
+    if (typeof window === 'undefined' || typeof Worker === 'undefined') {
+      return;
+    }
+
+    try {
+      // Inlined Web Worker script to avoid separate file loads or CORS issues
+      // Web Workers are NOT throttled to 1 minute when browser tab is minimized!
+      const workerBlob = new Blob([
+        `
+        let timer = null;
+        self.onmessage = function(e) {
+          if (e.data === 'start') {
+            if (timer) clearInterval(timer);
+            timer = setInterval(function() {
+              self.postMessage('tick');
+            }, 1200);
+          } else if (e.data === 'stop') {
+            if (timer) clearInterval(timer);
+            timer = null;
+          }
+        };
+        `
+      ], { type: 'application/javascript' });
+
+      const workerUrl = URL.createObjectURL(workerBlob);
+      this._worker = new Worker(workerUrl);
+      this._worker.onmessage = () => {
+        // Runs continuously even when the browser is minimized to taskbar
+        if (this._isOnline) {
+          this._pollPendingActions();
+          if (this._currentTask && this._isTracking) {
+            this._sendCurrentState(this._currentTask, true);
+          }
+        }
+      };
+      this._worker.postMessage('start');
+    } catch (e) {
+      Log.warn('LocalBridgeService: Background worker initialization skipped', e);
+    }
+  }
+
   private async _sendCurrentState(currentTask: any, isTracking: boolean = false): Promise<void> {
     if (!this._isOnline && !(await this._probeBridge())) {
       return;
     }
 
+    const isCurrentlyTracking = !!isTracking;
+    const now = Date.now();
+    if (isCurrentlyTracking && !this._isTracking) {
+      this._trackingStartedAt = now;
+    } else if (!isCurrentlyTracking) {
+      this._trackingStartedAt = null;
+    }
+    this._isTracking = isCurrentlyTracking;
+
     const payload = {
       activeTaskId: currentTask?.id || null,
       activeTaskTitle: currentTask?.title || '无活跃任务',
       timeSpentMs: currentTask?.timeSpent || 0,
-      isTracking: isTracking,
+      timeEstimateMs: currentTask?.timeEstimate || 0,
+      isTracking: isCurrentlyTracking,
+      trackingStartedAt: this._trackingStartedAt,
       mode: 'task',
-      lastTick: Date.now(),
+      lastTick: now,
     };
 
     try {
