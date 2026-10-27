@@ -1,6 +1,8 @@
 import { DestroyRef, inject, Injectable } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TaskService } from '../../features/tasks/task.service';
+import { FocusModeService } from '../../features/focus-mode/focus-mode.service';
+import { WorkContextService } from '../../features/work-context/work-context.service';
 import { StateSnapshotService } from '../../op-log/backup/state-snapshot.service';
 import { AppDataComplete } from '../../op-log/model/model-config';
 import { hasMeaningfulStateData } from '../../op-log/validation/has-meaningful-state-data.util';
@@ -19,6 +21,8 @@ const AUTO_BACKUP_INTERVAL_MS = 15 * 60 * 1000;
 export class LocalBridgeService {
   private _destroyRef = inject(DestroyRef);
   private _taskService = inject(TaskService);
+  private _focusModeService = inject(FocusModeService);
+  private _workContextService = inject(WorkContextService);
   private _stateSnapshotService = inject(StateSnapshotService);
 
   private _bridgeUrl = BRIDGE_DEFAULT_URL;
@@ -237,14 +241,61 @@ export class LocalBridgeService {
     }
     this._isTracking = isCurrentlyTracking;
 
+    let timeEstimate = currentTask?.timeEstimate || 0;
+    let timeSpent = currentTask?.timeSpent || 0;
+    let hasEstimate = timeEstimate > 0;
+    let timeRemaining: number | null = null;
+    let mode = 'task';
+
+    // 1. Focus Mode (Pomodoro / Focus session countdown)
+    try {
+      if (this._focusModeService?.isRunning?.() || this._focusModeService?.isOverlayShown?.()) {
+        const fmDuration = this._focusModeService.sessionDuration?.() || 0;
+        const fmRemaining = this._focusModeService.timeRemaining?.();
+        const fmElapsed = this._focusModeService.timeElapsed?.() || 0;
+        if (fmDuration > 0) {
+          timeRemaining = typeof fmRemaining === 'number' ? fmRemaining : Math.max(0, fmDuration - fmElapsed);
+          timeEstimate = fmDuration;
+          timeSpent = fmElapsed;
+          hasEstimate = true;
+          mode = 'focus_mode';
+        }
+      }
+    } catch {}
+
+    // 2. Task Estimate & Remaining calculation
+    if (mode === 'task') {
+      if (currentTask?.subTasks && currentTask.subTasks.length > 0) {
+        const subSpent = currentTask.subTasks.reduce((acc: number, st: any) => acc + (st?.timeSpent || 0), 0);
+        const subEst = currentTask.subTasks.reduce((acc: number, st: any) => acc + (st?.timeEstimate || 0), 0);
+        timeSpent = subSpent || timeSpent;
+        timeEstimate = subEst || timeEstimate;
+        hasEstimate = timeEstimate > 0;
+        if (hasEstimate) {
+          timeRemaining = Math.max(0, timeEstimate - timeSpent);
+        }
+      } else if (hasEstimate) {
+        timeRemaining = Math.max(0, timeEstimate - timeSpent);
+      }
+    }
+
+    // 3. Today's total estimate remaining fallback
+    let todayRemaining = 0;
+    try {
+      todayRemaining = this._workContextService?.estimateRemainingToday?.() || 0;
+    } catch {}
+
     const payload = {
       activeTaskId: currentTask?.id || null,
       activeTaskTitle: currentTask?.title || '无活跃任务',
-      timeSpentMs: currentTask?.timeSpent || 0,
-      timeEstimateMs: currentTask?.timeEstimate || 0,
+      timeSpentMs: timeSpent,
+      timeEstimateMs: timeEstimate,
+      timeRemainingMs: timeRemaining,
+      hasTaskEstimate: hasEstimate,
+      todayRemainingMs: todayRemaining,
       isTracking: isCurrentlyTracking,
       trackingStartedAt: this._trackingStartedAt,
-      mode: 'task',
+      mode: mode,
       lastTick: now,
     };
 

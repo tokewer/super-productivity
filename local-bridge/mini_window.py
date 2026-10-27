@@ -59,6 +59,8 @@ class MiniTimerWidget:
         self.active_title = "无活跃任务"
         self.current_time_ms = 0
         self.time_estimate_ms = 0
+        self.time_remaining_ms = None
+        self.has_task_estimate = False
         self.tracking_started_at = None
         self.last_sync_time = time.time()
         self.web_online = False
@@ -512,6 +514,8 @@ class MiniTimerWidget:
                             self.is_tracking = bool(st.get("isTracking"))
                             self.current_time_ms = st.get("timeSpentMs", 0)
                             self.time_estimate_ms = st.get("timeEstimateMs", 0)
+                            self.time_remaining_ms = st.get("timeRemainingMs")
+                            self.has_task_estimate = bool(st.get("hasTaskEstimate"))
                             self.tracking_started_at = st.get("trackingStartedAt")
                             self.last_sync_time = time.time()
                             self.web_online = bool(st.get("webOnline"))
@@ -533,41 +537,44 @@ class MiniTimerWidget:
             # Real-time counter advance with full wall-clock accuracy
             # Runs accurately even when Chrome/Web is minimized to taskbar!
             now = time.time()
-            if self.is_tracking and self.web_online:
-                elapsed_since_sync = int((now - self.last_sync_time) * 1000)
-                total_elapsed_ms = self.current_time_ms + elapsed_since_sync
-            else:
-                total_elapsed_ms = self.current_time_ms
-
-            # Determine Countdown Target
-            target_ms = self.countdown_target_ms
-            is_using_task_estimate = False
-            if self.prefer_task_estimate and self.time_estimate_ms > 0:
-                target_ms = self.time_estimate_ms
-                is_using_task_estimate = True
+            elapsed_since_sync = int((now - self.last_sync_time) * 1000) if (self.is_tracking and self.web_online) else 0
+            total_elapsed_ms = self.current_time_ms + elapsed_since_sync
 
             # Calculate display according to active mode
             if self.timer_mode == "count_down":
-                remaining_ms = target_ms - total_elapsed_ms
-                if remaining_ms >= 0:
+                if self.has_task_estimate and self.time_remaining_ms is not None:
+                    # 1. Exact remaining time streamed directly from web client!
+                    remaining_ms = max(0, self.time_remaining_ms - elapsed_since_sync)
                     display_text = format_time(remaining_ms)
                     timer_color = self.c_blue if self.is_tracking else self.c_text
-                    overtime = False
-                else:
-                    # Overtime mode: show +01:23 in warning red
-                    display_text = f"+{format_time(abs(remaining_ms))}"
-                    timer_color = self.c_red
-                    overtime = True
+                    target_mins = max(1, int(self.time_estimate_ms // 60000))
+                    rem_mins = int(remaining_ms // 60000)
 
-                # Subtitle text
-                target_mins = max(1, int(target_ms // 60000))
-                elapsed_mins = int(total_elapsed_ms // 60000)
-                if overtime:
-                    sub_text = f"⏳ 倒计时 (已超时! 目标 {target_mins}m)"
-                elif is_using_task_estimate:
-                    sub_text = f"⏳ 倒计时 [预估 {target_mins}m | 进度 {elapsed_mins}m]"
+                    if remaining_ms > 0:
+                        sub_text = f"⏳ 任务预估剩余: {display_text} (预估 {target_mins}m)"
+                    else:
+                        overtime_ms = total_elapsed_ms - self.time_estimate_ms
+                        if overtime_ms > 0:
+                            display_text = f"+{format_time(overtime_ms)}"
+                            timer_color = self.c_red
+                            sub_text = f"⏳ 任务已超时: {display_text} (预估 {target_mins}m)"
+                        else:
+                            sub_text = f"⏳ 任务已到时 (预估 {target_mins}m)"
                 else:
-                    sub_text = f"⏳ 倒计时 [番茄目标 {target_mins}m | 进度 {elapsed_mins}m]"
+                    # 2. Web task has no estimate: countdown from current session's Pomodoro target!
+                    target_ms = self.countdown_target_ms
+                    session_elapsed = elapsed_since_sync if not self.tracking_started_at else max(0, int(now * 1000) - self.tracking_started_at)
+                    remaining_ms = target_ms - session_elapsed
+                    target_mins = max(1, int(target_ms // 60000))
+
+                    if remaining_ms >= 0:
+                        display_text = format_time(remaining_ms)
+                        timer_color = self.c_blue if self.is_tracking else self.c_text
+                        sub_text = f"⏳ 番茄倒计时: {display_text} (网页任务未设预估)"
+                    else:
+                        display_text = f"+{format_time(abs(remaining_ms))}"
+                        timer_color = self.c_red
+                        sub_text = f"⏳ 番茄已超时: {display_text}"
             else:
                 # Count-up mode (正计时)
                 display_text = format_time(total_elapsed_ms)
