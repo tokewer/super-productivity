@@ -168,7 +168,7 @@ jobs:
       - name: Start Sync Docker Services
         # Retry to survive transient Docker Hub pull timeouts / rate limits;
         # timeout_minutes also bounds the otherwise-unbounded health-wait loop.
-        uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08 # v3
+        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4.0.0
         with:
           timeout_minutes: 12
           max_attempts: 3
@@ -239,7 +239,7 @@ jobs:
 
       - name: Start WebDAV Docker Service
         # Retry to survive transient Docker Hub pull timeouts / rate limits.
-        uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08 # v3
+        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4.0.0
         with:
           timeout_minutes: 6
           max_attempts: 3
